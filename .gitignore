@@ -1,0 +1,23 @@
+# Flutter & Dart
+.dart_tool/
+.packages
+.pub-cache/
+build/
+
+# IDE settings
+.idea/
+.vscode/
+
+# Android
+android/.gradle/
+android/local.properties
+
+# iOS
+ios/Pods/
+
+# Environment variables
+.env
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+*.iml

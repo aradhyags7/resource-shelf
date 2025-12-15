@@ -1,0 +1,41 @@
+name: resource_shelf
+description: A new Flutter project.
+
+environment:
+  sdk: "^3.9.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase core and services
+  firebase_core: ^3.15.2
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.6.12
+  firebase_storage: ^12.3.2
+
+  # Google Sign-In
+  google_sign_in: ^6.2.1
+
+  # State management + useful packages
+  flutter_riverpod: ^2.5.1
+  file_picker: ^8.1.2
+  url_launcher: ^6.3.0
+  intl: ^0.19.0
+  collection: ^1.18.0
+
+  # PDF Viewer + Required Dependencies
+  flutter_pdfview: ^1.2.7
+  path_provider: ^2.1.2
+  http: ^1.2.0
+
+  # Optional (you added earlier)
+  pdfx: ^2.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.1
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "124097093343",
+    "project_id": "resource-shelf",
+    "storage_bucket": "resource-shelf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124097093343:android:e550a1db7a0fa0eec5d36a",
+        "android_client_info": {
+          "package_name": "com.example.resource_shelf"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "124097093343-6sfunnt0vg6aal6v75qncmrf56c1fpev.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD69YZVkjelxpGpOOubSGm1LmN8i-E_6wI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "124097093343-6sfunnt0vg6aal6v75qncmrf56c1fpev.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "124097093343-asb2va86gh30av2ca64id5tq0khvjut6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.resourceShelf"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124097093343:android:77552d180d35baa7c5d36a",
+        "android_client_info": {
+          "package_name": "com.resourceshelf.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "124097093343-tbs86lgk2oi8h2opm25vjsen4s8cegpb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.resourceshelf.app",
+            "certificate_hash": "e5b56da1260f0806bcc9e793b61d8a3a26cdb522"
+          }
+        },
+        {
+          "client_id": "124097093343-6sfunnt0vg6aal6v75qncmrf56c1fpev.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD69YZVkjelxpGpOOubSGm1LmN8i-E_6wI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "124097093343-6sfunnt0vg6aal6v75qncmrf56c1fpev.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "124097093343-asb2va86gh30av2ca64id5tq0khvjut6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.resourceShelf"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
