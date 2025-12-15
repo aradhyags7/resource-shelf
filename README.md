@@ -1,16 +1,109 @@
-# resource_shelf
+📚 Resource Shelf
 
-A new Flutter project.
+Resource Shelf is a cross-platform Flutter application designed to help students share notes, ask doubts, and collaborate academically in one place.
 
-## Getting Started
+Built with a focus on clean UI, scalability, and real-world usability, this project aims to solve a common student problem: scattered resources and unstructured doubt resolution.
 
-This project is a starting point for a Flutter application.
+🚀 Features
 
-A few resources to get you started if this is your first Flutter project:
+🔐 Authentication (Login / Signup / Password Reset)
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+📄 Upload & View Notes (PDF & Image support)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+💬 Doubt & Community System
+
+🧠 Subject-wise Chat & Discussions
+
+👤 User Profiles & Settings
+
+⭐ Saved Notes & My Uploads
+
+🔍 Clean, Responsive UI
+
+☁️ Firebase Backend Integration
+
+🛠️ Tech Stack
+
+Frontend: Flutter (Dart)
+
+Backend: Firebase
+
+Authentication
+
+Firestore
+
+Cloud Storage
+
+Platforms:
+
+Android
+
+iOS
+
+Web
+
+Windows / macOS / Linux
+
+📱 Screens & Modules
+
+Splash Screen
+
+Login / Signup / Forgot Password
+
+Home Dashboard
+
+Notes Viewer (PDF & Images)
+
+Upload Notes
+
+Doubt & Community Pages
+
+Subject Chat Screens
+
+Profile & Settings
+
+🎯 Motivation
+
+As a student, I noticed that academic resources are often:
+
+Scattered across multiple platforms
+
+Difficult to organize
+
+Not collaborative
+
+Resource Shelf was built to centralize learning materials and encourage peer-to-peer academic support in a structured way.
+
+🧩 Project Status
+
+✅ Core features implemented
+
+🔧 UI & UX improvements ongoing
+
+🔐 Security & optimization improvements planned
+
+📌 Future Improvements
+
+Advanced search & filters
+
+Moderation tools
+
+Role-based access
+
+Performance optimizations
+
+Scalable backend rules
+
+👨‍💻 Author
+
+Aradhya Shinde
+Computer Engineering Student
+Interested in Software Development, Systems, Finance & Quantitative Tech
+
+GitHub: https://github.com/aradhyags7
+
+LinkedIn: (add your LinkedIn profile here)
+
+⭐ If you like this project
+
+Feel free to ⭐ star the repository or connect with me on LinkedIn.
