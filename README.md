@@ -102,7 +102,7 @@ Interested in Software Development, Systems, Finance & Quantitative Tech
 
 GitHub: https://github.com/aradhyags7
 
-LinkedIn: (add your LinkedIn profile here)
+LinkedIn: https://www.linkedin.com/in/aradhya-shinde-5797b8304/
 
 ⭐ If you like this project
 
