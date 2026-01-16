@@ -14,68 +14,92 @@ class AnswerScreen extends StatefulWidget {
 class _AnswerScreenState extends State<AnswerScreen> {
   final answerController = TextEditingController();
 
-  // ----------------------- POST ANSWER -----------------------
-  Future postAnswer() async {
-    if (answerController.text.isEmpty) return;
+  Future<void> postAnswer() async {
+    if (answerController.text.trim().isEmpty) return;
 
-    final user = FirebaseAuth.instance.currentUser!;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    // Fetch user's name from Firestore
-    final userDoc = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .get();
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .get();
 
-    final username = userDoc.data()?["name"] ?? user.email ?? "Unknown";
+      final username =
+          userDoc.data()?["name"] ?? user.email ?? "Unknown";
 
-    await FirebaseFirestore.instance
-        .collection("doubts")
-        .doc(widget.doubtId)
-        .collection("answers")
-        .add({
-          "answer": answerController.text.trim(),
-          "answeredByUid": user.uid,
-          "answeredByName": username,
-          "timestamp": DateTime.now(),
-        });
+      await FirebaseFirestore.instance
+          .collection("doubts")
+          .doc(widget.doubtId)
+          .collection("answers")
+          .add({
+        "answer": answerController.text.trim(),
+        "answeredByUid": user.uid,
+        "answeredByName": username,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
 
-    answerController.clear();
+      answerController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to post answer: $e")),
+      );
+    }
   }
 
-  // ----------------------- UI -----------------------
+  @override
+  void dispose() {
+    answerController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F7FA),
       appBar: AppBar(title: const Text("Answers")),
-
       body: Column(
         children: [
-          // ----------------------- ANSWERS LIST -----------------------
           Expanded(
-            child: StreamBuilder(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
                   .collection("doubts")
                   .doc(widget.doubtId)
                   .collection("answers")
-                  .orderBy("timestamp")
                   .snapshots(),
-
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError) {
+                  return const Center(
+                    child: Text(
+                      "You don't have permission to view answers.",
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  );
                 }
 
-                var docs = snapshot.data!.docs;
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                      child: CircularProgressIndicator());
+                }
+
+                final docs = snapshot.data?.docs ?? [];
 
                 if (docs.isEmpty) {
-                  return const Center(child: Text("No answers yet"));
+                  return const Center(
+                    child: Text(
+                      "No answers yet. Be the first to answer!",
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                  );
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: docs.length,
                   itemBuilder: (_, i) {
-                    var ans = docs[i].data();
+                    final ans = docs[i].data();
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -85,7 +109,7 @@ class _AnswerScreenState extends State<AnswerScreen> {
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
-                            blurRadius: 8,
+                            blurRadius: 6,
                             offset: const Offset(0, 3),
                             color: Colors.black.withOpacity(0.06),
                           ),
@@ -94,13 +118,10 @@ class _AnswerScreenState extends State<AnswerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            ans["answer"] ?? "",
-                            style: const TextStyle(fontSize: 16),
-                          ),
+                          Text(ans["answer"] ?? ""),
                           const SizedBox(height: 8),
                           Text(
-                            "By: ${ans['answeredByName'] ?? 'Unknown'}",
+                            "By: ${ans["answeredByName"] ?? "Unknown"}",
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.black54,
@@ -115,17 +136,26 @@ class _AnswerScreenState extends State<AnswerScreen> {
             ),
           ),
 
-          // ----------------------- ANSWER INPUT BOX -----------------------
-          Padding(
+          Container(
             padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border:
+                  Border(top: BorderSide(color: Colors.black12)),
+            ),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: answerController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: "Write an answer...",
-                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),

@@ -232,7 +232,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     const SizedBox(height: 18),
 
                     DropdownButtonFormField<String>(
-                      value: selectedYear,
+                      initialValue: selectedYear,
                       decoration: _input("Year"),
                       items: yearOptions
                           .map((y) =>

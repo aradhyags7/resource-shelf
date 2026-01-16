@@ -21,7 +21,6 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // fetch username from /users
     final userDoc = await FirebaseFirestore.instance
         .collection("users")
         .doc(user.uid)
@@ -37,83 +36,10 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
       "answer": answerController.text.trim(),
       "answeredByUid": user.uid,
       "answeredByName": username,
-      "timestamp": DateTime.now(),
+      "timestamp": FieldValue.serverTimestamp(),
     });
 
     answerController.clear();
-  }
-
-  // ---------------- TOGGLE SOLVED ----------------
-  Future<void> _toggleSolved(bool currentValue) async {
-    await FirebaseFirestore.instance
-        .collection("doubts")
-        .doc(widget.doubtId)
-        .update({"solved": !currentValue});
-  }
-
-  // ---------------- TOGGLE UPVOTE ----------------
-  Future<void> _toggleUpvote(List<dynamic> upvotes, String uid) async {
-    final List<String> updated = List<String>.from(upvotes);
-    if (updated.contains(uid)) {
-      updated.remove(uid);
-    } else {
-      updated.add(uid);
-    }
-
-    await FirebaseFirestore.instance
-        .collection("doubts")
-        .doc(widget.doubtId)
-        .update({"upvotes": updated});
-  }
-
-  // ---------------- DELETE DOUBT ----------------
-  Future<void> _deleteDoubt() async {
-    // delete all answers first
-    final answersSnap = await FirebaseFirestore.instance
-        .collection("doubts")
-        .doc(widget.doubtId)
-        .collection("answers")
-        .get();
-
-    for (var doc in answersSnap.docs) {
-      await doc.reference.delete();
-    }
-
-    // delete the doubt
-    await FirebaseFirestore.instance
-        .collection("doubts")
-        .doc(widget.doubtId)
-        .delete();
-
-    if (mounted) {
-      Navigator.pop(context);
-    }
-  }
-
-  void _confirmDeleteDoubt() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Delete Doubt"),
-        content: const Text("Are you sure you want to delete this doubt?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _deleteDoubt();
-            },
-            child: const Text(
-              "Delete",
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ---------------- DELETE ANSWER ----------------
@@ -142,10 +68,7 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
               Navigator.pop(context);
               await _deleteAnswer(answerId);
             },
-            child: const Text(
-              "Delete",
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -160,35 +83,25 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final currentUid = currentUser?.uid;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Doubt Details"),
-      ),
-      body: StreamBuilder<
-          DocumentSnapshot<Map<String, dynamic>>>(
+      backgroundColor: const Color(0xFFF6F7FA),
+      appBar: AppBar(title: const Text("Doubt Details")),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection("doubts")
             .doc(widget.doubtId)
             .snapshots(),
-        builder: (context, doubtSnap) {
-          if (!doubtSnap.hasData) {
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          final doubtDoc = doubtSnap.data!;
-          final data = doubtDoc.data();
-
-          if (data == null) {
+          if (!snap.hasData || snap.data!.data() == null) {
             return const Center(child: Text("Doubt not found"));
           }
 
-          final bool isOwner = data["askedByUid"] == currentUid;
-          final List<dynamic> upvotes = data["upvotes"] ?? [];
-          final bool isSolved = data["solved"] ?? false;
-
+          final data = snap.data!.data()!;
           return Column(
             children: [
               Expanded(
@@ -197,119 +110,40 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ---------- TITLE ROW ----------
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              data["title"] ?? "No title",
+                      // -------- DOUBT CARD --------
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                              color: Colors.black.withOpacity(0.05),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              data["title"] ?? "",
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                          ),
-                          if (isOwner)
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: _confirmDeleteDoubt,
+                            const SizedBox(height: 10),
+                            Text(
+                              data["description"] ?? "",
+                              style: const TextStyle(fontSize: 16),
                             ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // ---------- ASKED BY & SOLVED ----------
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "Asked by: ${data["askedByName"] ?? 'Unknown'}",
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              if (isSolved)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    "Solved",
-                                    style: TextStyle(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              if (isOwner) ...[
-                                const SizedBox(width: 8),
-                                TextButton(
-                                  onPressed: () =>
-                                      _toggleSolved(isSolved),
-                                  child: Text(
-                                    isSolved ? "Mark Unsolved" : "Mark Solved",
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // ---------- DESCRIPTION ----------
-                      Text(
-                        data["description"] ?? "",
-                        style: const TextStyle(fontSize: 16),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ---------- IMAGE ----------
-                      if (data["imageUrl"] != null &&
-                          data["imageUrl"].toString().isNotEmpty)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            data["imageUrl"],
-                            fit: BoxFit.cover,
-                          ),
+                          ],
                         ),
-
-                      const SizedBox(height: 16),
-
-                      // ---------- UPVOTES ----------
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              upvotes.contains(currentUid)
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              color: Colors.red,
-                            ),
-                            onPressed: currentUid == null
-                                ? null
-                                : () => _toggleUpvote(upvotes, currentUid),
-                          ),
-                          Text("${upvotes.length} upvotes"),
-                        ],
                       ),
 
-                      const SizedBox(height: 20),
-
-                      const Divider(),
-
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 24),
 
                       const Text(
                         "Answers",
@@ -319,104 +153,115 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
 
-                      // ---------- ANSWERS LIST ----------
-                      StreamBuilder<
-                          QuerySnapshot<Map<String, dynamic>>>(
+                      // -------- ANSWERS LIST (NEW UI) --------
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: FirebaseFirestore.instance
                             .collection("doubts")
                             .doc(widget.doubtId)
                             .collection("answers")
-                            .orderBy("timestamp")
                             .snapshots(),
                         builder: (context, ansSnap) {
-                          if (!ansSnap.hasData) {
-                            return const Padding(
-                              padding: EdgeInsets.only(top: 20),
-                              child: Center(
-                                  child: CircularProgressIndicator()),
-                            );
+                          if (ansSnap.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
                           }
 
-                          final answers = ansSnap.data!.docs;
+                          final answers = ansSnap.data?.docs ?? [];
 
                           if (answers.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.only(top: 10),
-                              child: Text(
-                                "No answers yet. Be the first to answer!",
-                                style: TextStyle(color: Colors.black54),
-                              ),
+                            return const Text(
+                              "No answers yet. Be the first to answer!",
+                              style: TextStyle(color: Colors.black54),
                             );
                           }
 
-                          return ListView.builder(
-                            shrinkWrap: true,
-                            physics:
-                                const NeverScrollableScrollPhysics(),
-                            itemCount: answers.length,
-                            itemBuilder: (context, index) {
-                              final ansDoc = answers[index];
-                              final ansData = ansDoc.data();
+                          return Column(
+                            children: answers.map((ansDoc) {
+                              final ans = ansDoc.data();
+                              final bool isOwner =
+                                  ans["answeredByUid"] == currentUid;
 
-                              final bool isAnswerOwner =
-                                  ansData["answeredByUid"] == currentUid;
+                              final String name =
+                                  ans["answeredByName"] ?? "User";
+                              final String initial =
+                                  name.isNotEmpty ? name[0].toUpperCase() : "U";
 
                               return Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(16),
                                   boxShadow: [
                                     BoxShadow(
-                                      blurRadius: 5,
+                                      blurRadius: 6,
                                       offset: const Offset(0, 3),
-                                      color: Colors.black
-                                          .withOpacity(0.05),
+                                      color:
+                                          Colors.black.withOpacity(0.05),
                                     ),
                                   ],
                                 ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      ansData["answer"] ?? "",
-                                      style: const TextStyle(
-                                        fontSize: 15,
+                                    // Avatar
+                                    CircleAvatar(
+                                      radius: 18,
+                                      backgroundColor:
+                                          Colors.indigo.withOpacity(0.15),
+                                      child: Text(
+                                        initial,
+                                        style: const TextStyle(
+                                          color: Colors.indigo,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          "By: ${ansData["answeredByName"] ?? 'Unknown'}",
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.black54,
-                                          ),
-                                        ),
-                                        if (isAnswerOwner)
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.delete,
-                                              size: 18,
-                                              color: Colors.red,
+                                    const SizedBox(width: 12),
+
+                                    // Content
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            name,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                            onPressed: () =>
-                                                _confirmDeleteAnswer(
-                                                    ansDoc.id),
                                           ),
-                                      ],
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            ans["answer"] ?? "",
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
+
+                                    // Delete (owner only)
+                                    if (isOwner)
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.delete,
+                                          size: 18,
+                                          color: Colors.red,
+                                        ),
+                                        onPressed: () =>
+                                            _confirmDeleteAnswer(ansDoc.id),
+                                      ),
                                   ],
                                 ),
                               );
-                            },
+                            }).toList(),
                           );
                         },
                       ),
@@ -425,24 +270,27 @@ class _DoubtDetailScreenState extends State<DoubtDetailScreen> {
                 ),
               ),
 
-              // ---------- ANSWER INPUT ----------
+              // -------- ANSWER INPUT --------
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  border: const Border(
-                    top: BorderSide(color: Colors.black12),
-                  ),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Colors.black12)),
                 ),
                 child: Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: answerController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: "Write an answer...",
-                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),

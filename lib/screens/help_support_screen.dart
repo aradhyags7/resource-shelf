@@ -7,10 +7,8 @@ class HelpSupportScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Help & Support")),
-
       body: ListView(
         padding: const EdgeInsets.all(16),
-
         children: [
           const Text(
             "FAQs",
@@ -20,41 +18,70 @@ class HelpSupportScreen extends StatelessWidget {
           const SizedBox(height: 15),
 
           // FAQ 1
-          ExpansionTile(
-            title: const Text("How do I upload notes?"),
-            children: const [
+          const ExpansionTile(
+            title: Text("How do I upload notes?"),
+            children: [
               Padding(
                 padding: EdgeInsets.all(12.0),
                 child: Text(
-                  "Go to 'Upload Notes' → choose PDF → add title → select subject → upload.\n"
-                  "Your notes will appear in 'My Uploads'.",
+                  "Go to 'Upload Notes' → paste a Google Drive PDF link → add title → select subject → upload.\n\n"
+                  "Make sure the Drive file access is set to 'Anyone with the link can view'.\n\n"
+                  "Your uploaded notes will appear in 'Notes' and 'My Uploads'.",
                 ),
               ),
             ],
           ),
 
           // FAQ 2
-          ExpansionTile(
-            title: const Text("How do I ask a doubt?"),
-            children: const [
+          const ExpansionTile(
+            title: Text("How do I share a Google Drive PDF link?"),
+            children: [
               Padding(
                 padding: EdgeInsets.all(12.0),
                 child: Text(
-                  "Go to 'Doubts' → tap the + button → enter question → post.\n"
-                  "Others can view and answer it.",
+                  "Open Google Drive → select your PDF → tap 'Share' → change access to "
+                  "'Anyone with the link' → copy the link → paste it in the upload section.",
                 ),
               ),
             ],
           ),
 
           // FAQ 3
-          ExpansionTile(
-            title: const Text("How do I view notes from others?"),
-            children: const [
+          const ExpansionTile(
+            title: Text("How do I ask a doubt?"),
+            children: [
               Padding(
                 padding: EdgeInsets.all(12.0),
                 child: Text(
-                  "Go to 'Notes' → filter by subject → tap a note to open it.",
+                  "Go to 'Doubts' → tap the + button → enter your question → post.\n\n"
+                  "Other users can view and answer your doubt.",
+                ),
+              ),
+            ],
+          ),
+
+          // FAQ 4
+          const ExpansionTile(
+            title: Text("How do I view notes uploaded by others?"),
+            children: [
+              Padding(
+                padding: EdgeInsets.all(12.0),
+                child: Text(
+                  "Go to 'Notes' → filter by subject or search → tap on a note to open the Google Drive PDF.",
+                ),
+              ),
+            ],
+          ),
+
+          // FAQ 5
+          const ExpansionTile(
+            title: Text("Where can I find my uploaded notes?"),
+            children: [
+              Padding(
+                padding: EdgeInsets.all(12.0),
+                child: Text(
+                  "Go to 'My Uploads' to see all the notes you have uploaded.\n"
+                  "You can also delete your notes from there.",
                 ),
               ),
             ],

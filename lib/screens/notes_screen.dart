@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'pdf_viewer_screen.dart';
-import 'image_viewer_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'saved_notes_screen.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -13,177 +13,155 @@ class NotesPage extends StatefulWidget {
 }
 
 class _NotesPageState extends State<NotesPage> {
+  String searchText = "";
+  String selectedSubjectId = "all";
+
+  List<Map<String, String>> subjects = [
+    {"id": "all", "name": "All"}
+  ];
+
+  String get uid => FirebaseAuth.instance.currentUser!.uid;
+
   @override
   void initState() {
     super.initState();
-    fetchSubjects();
+    _fetchSubjects();
   }
 
-  Future<void> fetchSubjects() async {
+  // ---------------- FETCH SUBJECTS ----------------
+  Future<void> _fetchSubjects() async {
     final snap = await FirebaseFirestore.instance
         .collection("subjects")
         .orderBy("name")
         .get();
 
-    final fetched = snap.docs.map((d) => d["name"].toString()).toList();
+    if (!mounted) return;
 
     setState(() {
-      subjects = ["All", ...fetched];
-      if (!subjects.contains(selectedSubject)) {
-        selectedSubject = "All";
-      }
+      subjects = [
+        {"id": "all", "name": "All"},
+        ...snap.docs.map(
+          (d) => {"id": d.id, "name": d["name"].toString()},
+        ),
+      ];
     });
   }
 
-  List<String> subjects = ["All"];
-
-  String selectedSubject = "All";
-  String searchText = "";
-
-  Stream<QuerySnapshot> getNotesStream() {
-    Query q = FirebaseFirestore.instance.collection("notes");
-
-    if (selectedSubject != "All") {
-      q = q.where("subject", isEqualTo: selectedSubject);
-    }
-
-    // keep timestamp ordering; popularity sorting can be added as a filter
-    return q.orderBy("timestamp", descending: true).snapshots();
+  // ---------------- FETCH ALL NOTES (SAFE) ----------------
+  Stream<QuerySnapshot> _notesStream() {
+    return FirebaseFirestore.instance
+        .collection("notes")
+        .orderBy("createdAt", descending: true)
+        .snapshots();
   }
 
-  IconData getFileIcon(String type) {
-    switch (type) {
-      case "pdf":
-        return Icons.picture_as_pdf;
-      case "image":
-        return Icons.image;
-      case "doc":
-        return Icons.description;
-      default:
-        return Icons.insert_drive_file;
-    }
+  // ---------------- OPEN DRIVE ----------------
+  Future<void> openDrive(String url) async {
+    if (url.isEmpty) return;
+    await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
   }
 
-  // ---------------- Voting logic (Up / Down) ----------------
-  Future<void> toggleVote(String noteId, int voteType) async {
-    // voteType: 1 => upvote, -1 => downvote
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final docRef = FirebaseFirestore.instance.collection('notes').doc(noteId);
+  // ---------------- TOGGLE VOTE ----------------
+  Future<void> toggleVote(String noteId, bool isUpvote) async {
+    final ref =
+        FirebaseFirestore.instance.collection("notes").doc(noteId);
 
     await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
+      final snap = await tx.get(ref);
       if (!snap.exists) return;
 
-      final data = snap.data()!;
-      List<dynamic> upvoters = List<dynamic>.from(data['upvoters'] ?? []);
-      List<dynamic> downvoters = List<dynamic>.from(data['downvoters'] ?? []);
-      int upvotes = (data['upvotes'] ?? 0) as int;
-      int downvotes = (data['downvotes'] ?? 0) as int;
+      final data = snap.data() as Map<String, dynamic>;
 
-      bool didUp = upvoters.contains(uid);
-      bool didDown = downvoters.contains(uid);
+      final upvoters = List<String>.from(data["upvoters"] ?? []);
+      final downvoters = List<String>.from(data["downvoters"] ?? []);
 
-      if (voteType == 1) {
-        if (didUp) {
-          // remove upvote
-          upvoters.remove(uid);
-          upvotes = (upvotes > 0) ? upvotes - 1 : 0;
+      int upvotes = data["upvotes"] ?? 0;
+      int downvotes = data["downvotes"] ?? 0;
+
+      if (isUpvote) {
+        if (upvoters.remove(uid)) {
+          upvotes--;
         } else {
-          // add upvote, and if previously downvoted remove downvote
           upvoters.add(uid);
-          upvotes = upvotes + 1;
-          if (didDown) {
-            downvoters.remove(uid);
-            downvotes = (downvotes > 0) ? downvotes - 1 : 0;
-          }
-        }
-      } else if (voteType == -1) {
-        if (didDown) {
-          // remove downvote
+          upvotes++;
           downvoters.remove(uid);
-          downvotes = (downvotes > 0) ? downvotes - 1 : 0;
+        }
+      } else {
+        if (downvoters.remove(uid)) {
+          downvotes--;
         } else {
-          // add downvote, and if previously upvoted remove upvote
           downvoters.add(uid);
-          downvotes = downvotes + 1;
-          if (didUp) {
-            upvoters.remove(uid);
-            upvotes = (upvotes > 0) ? upvotes - 1 : 0;
-          }
+          downvotes++;
+          upvoters.remove(uid);
         }
       }
 
-      tx.update(docRef, {
-        'upvotes': upvotes,
-        'downvotes': downvotes,
-        'upvoters': upvoters,
-        'downvoters': downvoters,
+      tx.update(ref, {
+        "upvotes": upvotes < 0 ? 0 : upvotes,
+        "downvotes": downvotes < 0 ? 0 : downvotes,
+        "upvoters": upvoters,
+        "downvoters": downvoters,
       });
     });
   }
 
-  // ---------------- Save / Unsave (your existing function) ----------------
-  Future toggleSave(DocumentSnapshot note) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
+  // ---------------- TOGGLE SAVE ----------------
+  Future<void> toggleSave(DocumentSnapshot note, bool isSaved) async {
     final ref = FirebaseFirestore.instance
         .collection("users")
         .doc(uid)
         .collection("saved_notes")
         .doc(note.id);
 
-    final exists = await ref.get();
-
-    if (exists.exists) {
+    if (isSaved) {
       await ref.delete();
     } else {
+      final data = note.data() as Map<String, dynamic>;
       await ref.set({
-        "title": note["title"],
-        "subject": note["subject"],
-        "type": note["type"],
-        "url": note["url"],
-        "savedAt": DateTime.now(),
+        "title": data["title"],
+        "subjectName":
+            data["subjectName"] ?? data["subject"] ?? "Unknown",
+        "driveUrl":
+            data["driveViewUrl"] ?? data["driveUrl"] ?? "",
+        "savedAt": FieldValue.serverTimestamp(),
       });
     }
   }
 
-  // -------------------------------------------------------------------
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FA),
-      appBar: AppBar(title: const Text("Notes"), elevation: 0),
-
+      appBar: AppBar(title: const Text("Notes")),
       body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Subject chips
+          // -------- SUBJECT FILTER --------
           SizedBox(
-            height: 55,
+            height: 52,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: subjects.length,
-              itemBuilder: (context, i) {
+              itemBuilder: (_, i) {
                 final s = subjects[i];
-                final isSelected = selectedSubject == s;
+                final selected = s["id"] == selectedSubjectId;
 
                 return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 10,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: ChoiceChip(
-                    label: Text(s),
-                    selected: isSelected,
-                    selectedColor: Colors.indigo.shade600,
+                    label: Text(s["name"]!),
+                    selected: selected,
+                    selectedColor: Colors.indigo,
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black,
+                      color: selected ? Colors.white : Colors.black,
                       fontWeight: FontWeight.w600,
                     ),
                     onSelected: (_) {
-                      setState(() => selectedSubject = s);
+                      setState(() {
+                        selectedSubjectId = s["id"]!;
+                      });
                     },
                   ),
                 );
@@ -191,244 +169,231 @@ class _NotesPageState extends State<NotesPage> {
             ),
           ),
 
-          // Search
+          // -------- SEARCH --------
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               decoration: InputDecoration(
+                hintText: "Search notes",
                 prefixIcon: const Icon(Icons.search),
-                hintText: "Search notes...",
                 filled: true,
                 fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(18),
                   borderSide: BorderSide.none,
                 ),
               ),
-              onChanged: (v) {
-                setState(() => searchText = v.toLowerCase());
-              },
+              onChanged: (v) =>
+                  setState(() => searchText = v.toLowerCase()),
             ),
           ),
 
-          // Notes List
+          // -------- NOTES GRID --------
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: getNotesStream(),
+              stream: _notesStream(),
               builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!snap.hasData || snap.data!.docs.isEmpty) {
+                if (!snap.hasData) {
                   return const Center(
-                    child: Text(
-                      "No notes found. Be the first one to upload 🚀",
-                      style: TextStyle(fontSize: 16, color: Colors.black54),
-                    ),
-                  );
+                      child: CircularProgressIndicator());
                 }
 
-                final docs = snap.data!.docs;
+                final docs = snap.data!.docs.where((doc) {
+                  final data =
+                      doc.data() as Map<String, dynamic>;
 
-                // local search
-                final filtered = docs.where((doc) {
-                  final title = doc["title"].toString().toLowerCase();
-                  return title.contains(searchText);
+                  final title =
+                      (data["title"] ?? "").toString().toLowerCase();
+
+                  final subjectName =
+                      (data["subjectName"] ?? data["subject"] ?? "")
+                          .toString()
+                          .toLowerCase();
+
+                  final matchesSearch =
+                      title.contains(searchText) ||
+                      subjectName.contains(searchText);
+
+                  final matchesSubject =
+                      selectedSubjectId == "all" ||
+                      data["subjectId"] == selectedSubjectId ||
+                      subjectName ==
+                          subjects
+                              .firstWhere(
+                                (s) => s["id"] == selectedSubjectId,
+                                orElse: () => {"name": ""},
+                              )["name"]!
+                              .toLowerCase();
+
+                  return matchesSearch && matchesSubject;
                 }).toList();
 
-                if (filtered.isEmpty) {
+                if (docs.isEmpty) {
                   return const Center(
-                    child: Text(
-                      "No notes found",
-                      style: TextStyle(fontSize: 16, color: Colors.black54),
-                    ),
-                  );
+                      child: Text("No notes available"));
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                return GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisExtent: 270,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
                   ),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, i) {
-                    final note = filtered[i];
-                    final title = note["title"];
-                    final subject = note["subject"];
-                    final type = note["type"];
-                    final url = note["url"];
-                    final uploader = note["uploadedBy"] ?? "Unknown";
-                    final timestamp = note["timestamp"] != null
-                        ? (note["timestamp"] as Timestamp).toDate()
-                        : null;
+                  itemCount: docs.length,
+                  itemBuilder: (_, i) {
+                    final doc = docs[i];
+                    final data =
+                        doc.data() as Map<String, dynamic>;
 
-                    // votes data
-                    final upvotes = (note["upvotes"] ?? 0) as int;
-                    final downvotes = (note["downvotes"] ?? 0) as int;
-                    final upvoters = List<String>.from(note["upvoters"] ?? []);
-                    final downvoters = List<String>.from(
-                      note["downvoters"] ?? [],
-                    );
+                    final upvoters =
+                        List<String>.from(data["upvoters"] ?? []);
+                    final downvoters =
+                        List<String>.from(data["downvoters"] ?? []);
+
                     final didUp = upvoters.contains(uid);
                     final didDown = downvoters.contains(uid);
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                            color: Colors.black.withOpacity(0.06),
-                          ),
-                        ],
-                      ),
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.shade100,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(
-                            getFileIcon(type),
-                            size: 28,
-                            color: Colors.indigo.shade700,
-                          ),
-                        ),
-                        title: Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              subject,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                            if (timestamp != null)
-                              Text(
-                                "Uploaded on: ${timestamp.day}/${timestamp.month}/${timestamp.year}",
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.black38,
-                                ),
-                              ),
-                            Text(
-                              "Uploaded by: $uploader",
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.black45,
-                              ),
-                            ),
-                          ],
-                        ),
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection("users")
+                          .doc(uid)
+                          .collection("saved_notes")
+                          .doc(doc.id)
+                          .snapshots(),
+                      builder: (_, savedSnap) {
+                        final isSaved = savedSnap.hasData &&
+                            savedSnap.data!.exists;
 
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Save button (existing)
-                            StreamBuilder(
-                              stream: FirebaseFirestore.instance
-                                  .collection("users")
-                                  .doc(uid)
-                                  .collection("saved_notes")
-                                  .doc(note.id)
-                                  .snapshots(),
-                              builder: (context, snap2) {
-                                bool isSaved = snap2.data?.exists ?? false;
-                                return IconButton(
-                                  icon: Icon(
-                                    isSaved
-                                        ? Icons.bookmark
-                                        : Icons.bookmark_border,
-                                    color: isSaved ? Colors.amber : Colors.grey,
-                                  ),
-                                  onPressed: () => toggleSave(note),
-                                );
-                              },
-                            ),
-
-                            // Votes column
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.thumb_up,
-                                    color: didUp ? Colors.blue : Colors.grey,
-                                  ),
-                                  onPressed: () => toggleVote(note.id, 1),
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(18),
+                          ),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  final url =
+                                      data["driveViewUrl"] ??
+                                          data["driveUrl"] ??
+                                          "";
+                                  openDrive(url);
+                                },
+                                child: Image.asset(
+                                  "assets/images/pdf_dummy.png",
+                                  height: 110,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
                                 ),
-                                Text(
-                                  "$upvotes",
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.thumb_down,
-                                    color: didDown ? Colors.red : Colors.grey,
-                                  ),
-                                  onPressed: () => toggleVote(note.id, -1),
-                                ),
-                                Text(
-                                  "$downvotes",
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(width: 6),
-                            const Icon(Icons.arrow_forward_ios, size: 18),
-                          ],
-                        ),
-
-                        onTap: () {
-                          if (type == "pdf") {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PDFViewerScreen(pdfUrl: url),
                               ),
-                            );
-                          } else if (type == "image") {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    ImageViewerScreen(imageUrl: url),
+
+                              Expanded(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.all(10),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        data["title"] ??
+                                            "Untitled",
+                                        maxLines: 2,
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        data["subjectName"] ??
+                                            data["subject"] ??
+                                            "Unknown",
+                                        style: const TextStyle(
+                                            fontSize: 12),
+                                      ),
+                                      const Spacer(),
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.thumb_up,
+                                              size: 18,
+                                              color: didUp
+                                                  ? Colors.blue
+                                                  : Colors.grey,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints:
+                                                const BoxConstraints(),
+                                            onPressed: () =>
+                                                toggleVote(
+                                                    doc.id,
+                                                    true),
+                                          ),
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.thumb_down,
+                                              size: 18,
+                                              color: didDown
+                                                  ? Colors.red
+                                                  : Colors.grey,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints:
+                                                const BoxConstraints(),
+                                            onPressed: () =>
+                                                toggleVote(
+                                                    doc.id,
+                                                    false),
+                                          ),
+                                          IconButton(
+                                            icon: Icon(
+                                              isSaved
+                                                  ? Icons.bookmark
+                                                  : Icons
+                                                      .bookmark_border,
+                                              size: 18,
+                                              color: isSaved
+                                                  ? Colors.indigo
+                                                  : Colors.grey,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints:
+                                                const BoxConstraints(),
+                                            onPressed: () async {
+                                              await toggleSave(
+                                                  doc, isSaved);
+                                              if (!isSaved &&
+                                                  mounted) {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        const SavedNotesScreen(),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            );
-                          } else if (type == "doc") {
-                            final googleUrl =
-                                "https://docs.google.com/viewer?url=$url";
-                            launchUrl(
-                              Uri.parse(googleUrl),
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                        },
-                      ),
+                            ],
+                          ),
+                        );
+                      },
                     );
                   },
                 );

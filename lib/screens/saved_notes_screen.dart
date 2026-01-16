@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'pdf_viewer_screen.dart';
-import 'image_viewer_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SavedNotesScreen extends StatefulWidget {
@@ -13,79 +11,82 @@ class SavedNotesScreen extends StatefulWidget {
 }
 
 class _SavedNotesScreenState extends State<SavedNotesScreen> {
-  IconData getFileIcon(String type) {
-    switch (type) {
-      case "pdf":
-        return Icons.picture_as_pdf;
-      case "image":
-        return Icons.image;
-      case "doc":
-        return Icons.description;
-      default:
-        return Icons.insert_drive_file;
-    }
+  final String uid = FirebaseAuth.instance.currentUser!.uid;
+
+  // ---------------- OPEN DRIVE ----------------
+  Future<void> openDrive(String url) async {
+    if (url.isEmpty) return;
+    await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
   }
 
-  Future<void> toggleVote(String noteId, int voteType) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final docRef = FirebaseFirestore.instance.collection('notes').doc(noteId);
+  // ---------------- REMOVE SAVED ----------------
+  Future<void> removeSaved(String noteId) async {
+    await FirebaseFirestore.instance
+        .collection("users")
+        .doc(uid)
+        .collection("saved_notes")
+        .doc(noteId)
+        .delete();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Removed from saved notes")),
+    );
+  }
+
+  // ---------------- TOGGLE VOTE ----------------
+  Future<void> toggleVote(String noteId, bool isUpvote) async {
+    final ref =
+        FirebaseFirestore.instance.collection("notes").doc(noteId);
 
     await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
+      final snap = await tx.get(ref);
       if (!snap.exists) return;
 
-      final data = snap.data()!;
-      List<dynamic> upvoters = List<dynamic>.from(data['upvoters'] ?? []);
-      List<dynamic> downvoters = List<dynamic>.from(data['downvoters'] ?? []);
-      int upvotes = (data['upvotes'] ?? 0) as int;
-      int downvotes = (data['downvotes'] ?? 0) as int;
+      final data = snap.data() as Map<String, dynamic>;
 
-      bool didUp = upvoters.contains(uid);
-      bool didDown = downvoters.contains(uid);
+      final upvoters = List<String>.from(data["upvoters"] ?? []);
+      final downvoters = List<String>.from(data["downvoters"] ?? []);
 
-      if (voteType == 1) {
-        if (didUp) {
-          upvoters.remove(uid);
-          upvotes = (upvotes > 0) ? upvotes - 1 : 0;
+      int upvotes = data["upvotes"] ?? 0;
+      int downvotes = data["downvotes"] ?? 0;
+
+      if (isUpvote) {
+        if (upvoters.remove(uid)) {
+          upvotes--;
         } else {
           upvoters.add(uid);
-          upvotes = upvotes + 1;
-          if (didDown) {
-            downvoters.remove(uid);
-            downvotes = (downvotes > 0) ? downvotes - 1 : 0;
-          }
+          upvotes++;
+          downvoters.remove(uid);
         }
       } else {
-        if (didDown) {
-          downvoters.remove(uid);
-          downvotes = (downvotes > 0) ? downvotes - 1 : 0;
+        if (downvoters.remove(uid)) {
+          downvotes--;
         } else {
           downvoters.add(uid);
-          downvotes = downvotes + 1;
-          if (didUp) {
-            upvoters.remove(uid);
-            upvotes = (upvotes > 0) ? upvotes - 1 : 0;
-          }
+          downvotes++;
+          upvoters.remove(uid);
         }
       }
 
-      tx.update(docRef, {
-        'upvotes': upvotes,
-        'downvotes': downvotes,
-        'upvoters': upvoters,
-        'downvoters': downvoters,
+      tx.update(ref, {
+        "upvotes": upvotes < 0 ? 0 : upvotes,
+        "downvotes": downvotes < 0 ? 0 : downvotes,
+        "upvoters": upvoters,
+        "downvoters": downvoters,
       });
     });
   }
 
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: const Color(0xFFF6F7FA),
       appBar: AppBar(title: const Text("Saved Notes")),
-
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("users")
@@ -93,102 +94,148 @@ class _SavedNotesScreenState extends State<SavedNotesScreen> {
             .collection("saved_notes")
             .orderBy("savedAt", descending: true)
             .snapshots(),
-
         builder: (context, snap) {
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-
-          final docs = snap.data!.docs;
-          if (docs.isEmpty) {
-            return const Center(child: Text("No saved notes yet.", style: TextStyle(fontSize: 16, color: Colors.black54)));
+          if (!snap.hasData) {
+            return const Center(child: CircularProgressIndicator());
           }
+
+          if (snap.data!.docs.isEmpty) {
+            return const Center(
+              child: Text(
+                "No saved notes yet.",
+                style: TextStyle(color: Colors.black54),
+              ),
+            );
+          }
+
+          final savedDocs = snap.data!.docs;
 
           return ListView.builder(
             padding: const EdgeInsets.all(12),
-            itemCount: docs.length,
-            itemBuilder: (context, i) {
-              final note = docs[i];
-              final title = note["title"];
-              final subject = note["subject"];
-              final fileType = note["type"];
-              final url = note["url"];
-              final noteId = note.id; // this doc id matches original note id (we saved it that way)
+            itemCount: savedDocs.length,
+            itemBuilder: (_, i) {
+              final noteId = savedDocs[i].id;
 
-              // To show live votes we read the original note doc as a small stream:
               return StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance.collection("notes").doc(noteId).snapshots(),
-                builder: (context, nSnap) {
-                  final noteData = nSnap.data;
-                  int upvotes = 0;
-                  int downvotes = 0;
-                  bool didUp = false;
-                  bool didDown = false;
-
-                  if (noteData != null && noteData.exists) {
-                    upvotes = (noteData["upvotes"] ?? 0) as int;
-                    downvotes = (noteData["downvotes"] ?? 0) as int;
-                    final upvoters = List<String>.from(noteData["upvoters"] ?? []);
-                    final downvoters = List<String>.from(noteData["downvoters"] ?? []);
-                    didUp = upvoters.contains(uid);
-                    didDown = downvoters.contains(uid);
+                stream: FirebaseFirestore.instance
+                    .collection("notes")
+                    .doc(noteId)
+                    .snapshots(),
+                builder: (context, noteSnap) {
+                  if (!noteSnap.hasData || !noteSnap.data!.exists) {
+                    return const SizedBox.shrink();
                   }
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [BoxShadow(blurRadius: 8, offset: const Offset(0,4), color: Colors.black.withOpacity(0.06))],
-                    ),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.indigo.shade100,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(getFileIcon(fileType), size: 28, color: Colors.indigo.shade700),
-                      ),
-                      title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                      subtitle: Text(subject, style: const TextStyle(fontSize: 13, color: Colors.black54)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.thumb_up, color: didUp ? Colors.blue : Colors.grey),
-                                onPressed: () => toggleVote(noteId, 1),
-                              ),
-                              Text("$upvotes", style: const TextStyle(fontSize: 12)),
-                              IconButton(
-                                icon: Icon(Icons.thumb_down, color: didDown ? Colors.red : Colors.grey),
-                                onPressed: () => toggleVote(noteId, -1),
-                              ),
-                              Text("$downvotes", style: const TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.bookmark_remove, color: Colors.red),
-                            onPressed: () {
-                              FirebaseFirestore.instance.collection("users").doc(uid).collection("saved_notes").doc(noteId).delete();
-                            },
+                  final note =
+                      noteSnap.data!.data() as Map<String, dynamic>;
+
+                  final title = note["title"] ?? "Untitled";
+                  final subject =
+                      note["subjectName"] ?? note["subject"] ?? "Unknown";
+                  final driveUrl =
+                      note["driveViewUrl"] ?? note["driveUrl"] ?? "";
+
+                  final upvotes = note["upvotes"] ?? 0;
+                  final downvotes = note["downvotes"] ?? 0;
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => openDrive(driveUrl),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                            color: Colors.black.withOpacity(0.06),
                           ),
                         ],
                       ),
-                      onTap: () {
-                        if (fileType == "pdf") {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => PDFViewerScreen(pdfUrl: url)));
-                        } else if (fileType == "image") {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: url)));
-                        } else if (fileType == "doc") {
-                          final googleUrl = "https://docs.google.com/viewer?url=$url";
-                          launchUrl(Uri.parse(googleUrl), mode: LaunchMode.externalApplication);
-                        }
-                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // -------- SMALLER DUMMY THUMBNAIL --------
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                            child: Image.asset(
+                              "assets/images/pdf_dummy.png",
+                              height: 70, // 🔑 reduced height
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+
+                          Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.bookmark_remove,
+                                        color: Colors.red,
+                                      ),
+                                      onPressed: () =>
+                                          removeSaved(noteId),
+                                    ),
+                                  ],
+                                ),
+
+                                Text(
+                                  subject,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.thumb_up),
+                                      onPressed: () =>
+                                          toggleVote(noteId, true),
+                                    ),
+                                    Text("$upvotes"),
+                                    const SizedBox(width: 12),
+                                    IconButton(
+                                      icon:
+                                          const Icon(Icons.thumb_down),
+                                      onPressed: () =>
+                                          toggleVote(noteId, false),
+                                    ),
+                                    Text("$downvotes"),
+                                    const Spacer(),
+                                    const Icon(
+                                      Icons.open_in_new,
+                                      size: 18,
+                                      color: Colors.black54,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },

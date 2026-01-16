@@ -142,7 +142,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                     // Year Dropdown
                     DropdownButtonFormField<String>(
-                      value: selectedYear,
+                      initialValue: selectedYear,
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: Colors.grey.shade100,

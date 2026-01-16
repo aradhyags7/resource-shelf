@@ -19,7 +19,6 @@ import 'screens/change_password_screen.dart';
 import 'screens/help_support_screen.dart';
 import 'screens/report_problem_screen.dart';
 import 'screens/app_guide_screen.dart';
-import 'screens/pdf_viewer_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/saved_notes_screen.dart';
 import 'screens/community_screen.dart';
@@ -27,15 +26,16 @@ import 'screens/forgot_password_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // ⭐ All routes defined here for easy access
+  // ✅ SAFE ROUTES (NO ARGUMENT SCREENS HERE)
   static final Map<String, WidgetBuilder> appRoutes = {
     '/splash': (context) => const SplashScreen(),
     '/': (context) => const AuthChecker(),
@@ -48,21 +48,21 @@ class MyApp extends StatelessWidget {
     '/upload': (context) => const UploadScreen(),
     '/help': (context) => const HelpScreen(),
     '/profile': (context) => const ProfileScreen(),
+
     '/myuploads': (context) => const MyUploadsScreen(),
-    '/doubts': (context) => const DoubtScreen(),
     '/savednotes': (context) => const SavedNotesScreen(),
+    '/doubts': (context) => const DoubtScreen(),
 
     '/settings': (context) => const SettingsScreen(),
     '/editprofile': (context) => const EditProfileScreen(),
     '/changepassword': (context) => const ChangePasswordScreen(),
+
     '/help_support': (context) => const HelpSupportScreen(),
     '/reportProblem': (context) => const ReportProblemScreen(),
     '/appGuide': (context) => const AppGuideScreen(),
 
-    '/pdfviewer': (context) => PDFViewerScreen(pdfUrl: ""),
     '/community': (context) => const CommunityScreen(),
     '/forgotpassword': (context) => const ForgotPasswordScreen(),
-
   };
 
   @override
@@ -70,23 +70,21 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: '/splash',
-      onGenerateRoute: generatePremiumRoute,
       routes: appRoutes,
+      onGenerateRoute: _premiumRoute,
     );
   }
 }
 
-//
-// ⭐⭐⭐ Fade Transition For All Screens ⭐⭐⭐
-//
-
-Route<dynamic> generatePremiumRoute(RouteSettings settings) {
+/// 🌟 Premium fade + scale transition for all named routes
+Route<dynamic> _premiumRoute(RouteSettings settings) {
   final builder = MyApp.appRoutes[settings.name];
 
   if (builder == null) {
     return MaterialPageRoute(
-      builder: (_) =>
-          const Scaffold(body: Center(child: Text("Route not found"))),
+      builder: (_) => const Scaffold(
+        body: Center(child: Text("Route not found")),
+      ),
     );
   }
 
@@ -95,7 +93,7 @@ Route<dynamic> generatePremiumRoute(RouteSettings settings) {
     pageBuilder: (context, animation, secondaryAnimation) {
       return builder(context);
     },
-    transitionDuration: const Duration(milliseconds: 280),
+    transitionDuration: const Duration(milliseconds: 260),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final fade = CurvedAnimation(
         parent: animation,
@@ -103,9 +101,11 @@ Route<dynamic> generatePremiumRoute(RouteSettings settings) {
       );
 
       final scale = Tween<double>(
-        begin: 0.94,
+        begin: 0.95,
         end: 1.0,
-      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutQuad));
+      ).animate(
+        CurvedAnimation(parent: animation, curve: Curves.easeOut),
+      );
 
       return FadeTransition(
         opacity: fade,

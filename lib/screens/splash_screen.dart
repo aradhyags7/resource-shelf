@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -13,11 +15,13 @@ class _SplashScreenState extends State<SplashScreen>
 
   late AnimationController _controller;
   late Animation<double> _opacity;
+  Timer? _navigationTimer;
 
   @override
   void initState() {
     super.initState();
 
+    // Animation controller
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -29,7 +33,10 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Future.delayed(const Duration(seconds: 3), () {
+    // Delayed navigation (SAFE)
+    _navigationTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+
       final user = FirebaseAuth.instance.currentUser;
 
       if (user == null) {
@@ -42,6 +49,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    // Cancel timer to avoid calling context after dispose
+    _navigationTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

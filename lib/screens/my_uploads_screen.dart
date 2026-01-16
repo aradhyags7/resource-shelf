@@ -1,8 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'image_viewer_screen.dart';
-import 'pdf_viewer_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MyUploadsScreen extends StatefulWidget {
@@ -13,143 +11,248 @@ class MyUploadsScreen extends StatefulWidget {
 }
 
 class _MyUploadsScreenState extends State<MyUploadsScreen> {
-  Future<void> toggleVote(String noteId, int voteType) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final docRef = FirebaseFirestore.instance.collection('notes').doc(noteId);
+  final String uid = FirebaseAuth.instance.currentUser!.uid;
+
+  // ---------------- OPEN DRIVE ----------------
+  Future<void> openDrive(String url) async {
+    if (url.isEmpty) return;
+    await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  // ---------------- DELETE NOTE EVERYWHERE ----------------
+  Future<void> deleteNoteEverywhere(String noteId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete note"),
+        content: const Text(
+          "This will permanently delete the note for everyone.\nThis action cannot be undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final firestore = FirebaseFirestore.instance;
+
+    // 1️⃣ Delete from main notes collection
+    await firestore.collection("notes").doc(noteId).delete();
+
+    // 2️⃣ Remove from ALL users' saved_notes
+    final usersSnap = await firestore.collection("users").get();
+
+    for (final user in usersSnap.docs) {
+      await firestore
+          .collection("users")
+          .doc(user.id)
+          .collection("saved_notes")
+          .doc(noteId)
+          .delete()
+          .catchError((_) {});
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Note deleted everywhere")),
+    );
+  }
+
+  // ---------------- TOGGLE VOTE ----------------
+  Future<void> toggleVote(String noteId, bool isUpvote) async {
+    final ref =
+        FirebaseFirestore.instance.collection("notes").doc(noteId);
 
     await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
+      final snap = await tx.get(ref);
       if (!snap.exists) return;
 
-      final data = snap.data()!;
-      List<dynamic> upvoters = List<dynamic>.from(data['upvoters'] ?? []);
-      List<dynamic> downvoters = List<dynamic>.from(data['downvoters'] ?? []);
-      int upvotes = (data['upvotes'] ?? 0) as int;
-      int downvotes = (data['downvotes'] ?? 0) as int;
+      final data = snap.data() as Map<String, dynamic>;
 
-      bool didUp = upvoters.contains(uid);
-      bool didDown = downvoters.contains(uid);
+      final upvoters = List<String>.from(data["upvoters"] ?? []);
+      final downvoters = List<String>.from(data["downvoters"] ?? []);
 
-      if (voteType == 1) {
-        if (didUp) {
-          upvoters.remove(uid);
-          upvotes = (upvotes > 0) ? upvotes - 1 : 0;
+      int upvotes = data["upvotes"] ?? 0;
+      int downvotes = data["downvotes"] ?? 0;
+
+      if (isUpvote) {
+        if (upvoters.remove(uid)) {
+          upvotes--;
         } else {
           upvoters.add(uid);
-          upvotes = upvotes + 1;
-          if (didDown) {
-            downvoters.remove(uid);
-            downvotes = (downvotes > 0) ? downvotes - 1 : 0;
-          }
+          upvotes++;
+          downvoters.remove(uid);
         }
       } else {
-        if (didDown) {
-          downvoters.remove(uid);
-          downvotes = (downvotes > 0) ? downvotes - 1 : 0;
+        if (downvoters.remove(uid)) {
+          downvotes--;
         } else {
           downvoters.add(uid);
-          downvotes = downvotes + 1;
-          if (didUp) {
-            upvoters.remove(uid);
-            upvotes = (upvotes > 0) ? upvotes - 1 : 0;
-          }
+          downvotes++;
+          upvoters.remove(uid);
         }
       }
 
-      tx.update(docRef, {
-        'upvotes': upvotes,
-        'downvotes': downvotes,
-        'upvoters': upvoters,
-        'downvoters': downvoters,
+      tx.update(ref, {
+        "upvotes": upvotes < 0 ? 0 : upvotes,
+        "downvotes": downvotes < 0 ? 0 : downvotes,
+        "upvoters": upvoters,
+        "downvoters": downvoters,
       });
     });
   }
 
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F7FA),
       appBar: AppBar(title: const Text("My Uploads")),
-
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
-            .collection("notes")
-            .where("uploadedByUid", isEqualTo: user!.uid)
-            .orderBy("timestamp", descending: true)
-            .snapshots(),
+    .collection("notes")
+    .where("uploadedByUid", isEqualTo: uid)
+    .snapshots(),
 
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+        builder: (context, snap) {
+          if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("No uploads yet.", style: TextStyle(fontSize: 18, color: Colors.grey)));
+          if (snap.data!.docs.isEmpty) {
+            return const Center(
+              child: Text(
+                "You haven’t uploaded anything yet.",
+                style: TextStyle(color: Colors.black54),
+              ),
+            );
           }
 
-          final notes = snapshot.data!.docs;
-          final uid = user.uid;
+          final notes = snap.data!.docs;
 
           return ListView.builder(
             padding: const EdgeInsets.all(12),
             itemCount: notes.length,
-            itemBuilder: (context, index) {
-              final note = notes[index];
-              final fileType = note["type"];
-              final url = note["url"];
-              final title = note["title"];
-              final subject = note["subject"];
+            itemBuilder: (_, i) {
+              final note = notes[i];
+              final data = note.data() as Map<String, dynamic>;
 
-              final upvotes = (note["upvotes"] ?? 0) as int;
-              final downvotes = (note["downvotes"] ?? 0) as int;
-              final upvoters = List<String>.from(note["upvoters"] ?? []);
-              final downvoters = List<String>.from(note["downvoters"] ?? []);
-              final didUp = upvoters.contains(uid);
-              final didDown = downvoters.contains(uid);
+              final driveUrl =
+                  data["driveViewUrl"] ?? data["driveUrl"] ?? "";
 
-              IconData icon = Icons.description;
-              if (fileType == "pdf") icon = Icons.picture_as_pdf;
-              else if (fileType == "image") icon = Icons.image;
+              final upvotes = data["upvotes"] ?? 0;
+              final downvotes = data["downvotes"] ?? 0;
 
-              return Card(
-                elevation: 2,
-                child: ListTile(
-                  leading: Icon(icon, size: 30),
-                  title: Text(title),
-                  subtitle: Text("Subject: $subject"),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.thumb_up, color: didUp ? Colors.blue : Colors.grey),
-                            onPressed: () => toggleVote(note.id, 1),
-                          ),
-                          Text("$upvotes", style: const TextStyle(fontSize: 12)),
-                          IconButton(
-                            icon: Icon(Icons.thumb_down, color: didDown ? Colors.red : Colors.grey),
-                            onPressed: () => toggleVote(note.id, -1),
-                          ),
-                          Text("$downvotes", style: const TextStyle(fontSize: 12)),
-                        ],
+              return InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => openDrive(driveUrl),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        blurRadius: 6,
+                        offset: const Offset(0, 3),
+                        color: Colors.black.withOpacity(0.06),
                       ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_ios, size: 16),
                     ],
                   ),
-                  onTap: () {
-                    if (fileType == "pdf") {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => PDFViewerScreen(pdfUrl: url)));
-                    } else if (fileType == "image") {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: url)));
-                    } else {
-                      final gviewUrl = "https://docs.google.com/viewer?url=$url";
-                      launchUrl(Uri.parse(gviewUrl), mode: LaunchMode.externalApplication);
-                    }
-                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // -------- SAME DUMMY THUMBNAIL --------
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(16),
+                        ),
+                        child: Image.asset(
+                          "assets/images/pdf_dummy.png",
+                          height: 70,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+
+                      Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    data["title"] ?? "Untitled",
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
+                                  onPressed: () =>
+                                      deleteNoteEverywhere(note.id),
+                                ),
+                              ],
+                            ),
+
+                            Text(
+                              data["subjectName"] ??
+                                  data["subject"] ??
+                                  "Unknown",
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.thumb_up),
+                                  onPressed: () =>
+                                      toggleVote(note.id, true),
+                                ),
+                                Text("$upvotes"),
+                                const SizedBox(width: 12),
+                                IconButton(
+                                  icon: const Icon(Icons.thumb_down),
+                                  onPressed: () =>
+                                      toggleVote(note.id, false),
+                                ),
+                                Text("$downvotes"),
+                                const Spacer(),
+                                const Icon(
+                                  Icons.open_in_new,
+                                  size: 18,
+                                  color: Colors.black54,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
